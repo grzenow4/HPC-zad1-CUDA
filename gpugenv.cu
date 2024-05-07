@@ -11,6 +11,12 @@
 const size_t CHUNK_SIZE = 1048576;
 const size_t HASH_MAP_SIZE = 2 * CHUNK_SIZE;
 
+/*
+ * Index file contains `HashMap` info as follows:
+ * <index>\t<whole_db_entry>
+ * This function returns an index of the `whole_db_entry` in the `HashMap`
+ * and removes it from the input string.
+ */
 static size_t takeIdxFromEntry(std::string& entry) {
     std::string tmp;
     std::getline(std::stringstream(entry), tmp, '\t');
@@ -18,6 +24,9 @@ static size_t takeIdxFromEntry(std::string& entry) {
     return std::stoi(tmp);
 }
 
+/*
+ * Returns a `Variant` of the database entry.
+ */
 static Variant takeVariantFromEntry(const std::string& entry) {
     Variant variant;
 
@@ -39,6 +48,9 @@ static Variant takeVariantFromEntry(const std::string& entry) {
     return variant;
 }
 
+/*
+ * Returns a `Variant` of the VCF entry.
+ */
 static Variant takeVariantFromVCF(const std::string& entry) {
     Variant variant;
 
@@ -60,6 +72,12 @@ static Variant takeVariantFromVCF(const std::string& entry) {
     return variant;
 }
 
+/*
+ * Indexes the database as follows:
+ * 1. Reads up to `CHUNK_SIZE` lines from the database and create a HashMap based on them.
+ * 2. Writes just created map to the index file prefixed with `HashMap:` header.
+ * 3. In the result, index file contains (lines_in_db / CHUNK_SIZE) `HashMap`s.
+ */
 void indexDatabase(const std::string& dbNSFP_file, const std::string& index_file) {
     std::ifstream input_file(dbNSFP_file);
     std::ofstream output_file(index_file);
@@ -70,7 +88,7 @@ void indexDatabase(const std::string& dbNSFP_file, const std::string& index_file
     }
 
     std::string line;
-    std::getline(input_file, line);
+    std::getline(input_file, line); // skip the header line
 
     int chunk_count = 0;
     HashMap *map = new HashMap(HASH_MAP_SIZE);
@@ -98,6 +116,9 @@ void indexDatabase(const std::string& dbNSFP_file, const std::string& index_file
     output_file.close();
 }
 
+/*
+ * Counts lines in the input VCF file.
+ */
 int countInputSize(const std::string& input) {
     std::ifstream input_file(input);
 
@@ -114,9 +135,13 @@ int countInputSize(const std::string& input) {
     }
 
     input_file.close();
-    return line_count - 2;
+    return line_count - 2; // subtract two header lines
 }
 
+/*
+ * Reads the input file and builds the array of hashes of variants of entries
+ * if the input lines. This array is then copied to GPU.
+ */
 void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
     std::ifstream input_file(input);
 
@@ -127,8 +152,8 @@ void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
 
     uint64_t *hashes = new uint64_t[size];
     std::string line;
-    std::getline(input_file, line);
-    std::getline(input_file, line);
+    std::getline(input_file, line); // skip the header line
+    std::getline(input_file, line); // skip the second header line
     for (int i = 0; std::getline(input_file, line); i++) {
         assert(i < size);
         hashes[i] = hashVariant(takeVariantFromVCF(line));
@@ -140,6 +165,9 @@ void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
     input_file.close();
 }
 
+/*
+ * TODO: documentation
+ */
 __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t *map) {
     int idx = threadIdx.x;
 
@@ -162,6 +190,10 @@ __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t 
     }
 }
 
+/*
+ * Invokes the kernel function. All `invokeKernel` calls sum the GPU execution
+ * times to the `elapsedTime` variable.
+ */
 void invokeKernel(uint64_t *devOut, uint64_t *devInput, int input_size, uint64_t *devMap, float &elapsedTime) {
     cudaEvent_t start, stop;
     HANDLE_ERROR(cudaEventCreate(&start));
@@ -180,6 +212,12 @@ void invokeKernel(uint64_t *devOut, uint64_t *devInput, int input_size, uint64_t
     HANDLE_ERROR(cudaEventDestroy(stop));
 }
 
+/*
+ * For each `HashMap` read from the index file, calls the kernel function, where
+ * the matching takes place. Then, writes every match found in this iteration
+ * to the output file.
+ * Counts the time spent on GPU.
+ */
 void matchDatabase(const std::string& input,
                    const std::string& index,
                    const std::string& output) {
