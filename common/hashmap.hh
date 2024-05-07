@@ -4,11 +4,11 @@
 #include <string>
 #include <vector>
 
-#define INT_MAX_LEN 10
+const uint64_t INT_MAX_LEN = 10;
 
 typedef struct {
-    int chr;
-    int pos;
+    uint64_t chr;
+    uint64_t pos;
     char ref;
     char alt;
 } Variant;
@@ -22,30 +22,30 @@ bool operator==(const Variant& v1, const Variant& v2) {
     return v1.chr == v2.chr && v1.pos == v2.pos && v1.ref == v2.ref && v1.alt == v2.alt;
 }
 
+uint64_t alleleToInt(char allele) {
+    switch (allele) {
+        case 'A': return 0;
+        case 'C': return 1;
+        case 'G': return 2;
+        case 'T': return 3;
+        default:
+            std::cout << "Error parsing " << allele << " to uint64";
+            exit(EXIT_FAILURE);
+    }
+}
+
+uint64_t hashVariant(const Variant& variant) {
+    return variant.chr * pow(10, INT_MAX_LEN + 2) +
+           variant.pos * 100 +
+           alleleToInt(variant.ref) * 10 +
+           alleleToInt(variant.alt);
+}
+
 class HashMap {
-private:
+public:
     std::vector<HashEntry> entries;
     size_t capacity;
     size_t size;
-
-    int alleleToInt(char allele) {
-        switch (allele) {
-            case 'A': return 0;
-            case 'C': return 1;
-            case 'G': return 2;
-            case 'T': return 3;
-            default:
-                std::cout << "Error parsing " << allele << " to int";
-                exit(EXIT_FAILURE);
-        }
-    }
-
-    uint64_t hashVariant(const Variant& variant) {
-        return  variant.chr * pow(10, INT_MAX_LEN + 2) +
-                variant.pos * 100 +
-                alleleToInt(variant.ref) * 10 +
-                alleleToInt(variant.alt);
-    }
 
 public:
     HashMap(int init_capacity) : capacity(init_capacity), size(0) {
@@ -62,12 +62,12 @@ public:
 
     void insertAt(Variant variant, std::string dbEntry, size_t idx) {
         if (dbEntry.empty()) {
-            std::cout << "Cannot insert empty string";
+            std::cout << "Error inserting an empty string to the HashMap";
             exit(EXIT_FAILURE);
         }
 
         if (size >= capacity / 2) {
-            std::cout << "Error inserting to the HashMap";
+            std::cout << "Error inserting more than `capacity / 2` elements to the HashMap";
             exit(EXIT_FAILURE);
         }
 
@@ -126,6 +126,16 @@ public:
         }
 
         output_file.close();
+    }
+
+    uint64_t *dumpVariants() {
+        uint64_t *res = (uint64_t*) malloc(capacity * sizeof(uint64_t));
+        for (size_t i = 0; i < capacity; i++) {
+            if (!entries[i].dbEntry.empty()) {
+                res[i] = hashVariant(entries[i].variant);
+            }
+        }
+        return res;
     }
 
     void printMap() {
