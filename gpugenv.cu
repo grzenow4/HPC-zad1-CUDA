@@ -8,6 +8,9 @@
 #include "common/errors.h"
 #include "common/hashmap.hh"
 
+#define M 1
+#define N 64
+
 const size_t CHUNK_SIZE = 1048576;
 const size_t HASH_MAP_SIZE = 2 * CHUNK_SIZE;
 
@@ -140,7 +143,7 @@ int countInputSize(const std::string& input) {
 
 /*
  * Reads the input file and builds the array of hashes of variants of entries
- * if the input lines. This array is then copied to GPU.
+ * of the input lines. This array is then copied to GPU.
  */
 void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
     std::ifstream input_file(input);
@@ -172,7 +175,7 @@ __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t 
     int idx = threadIdx.x;
 
     for (int i = 0; i < input_size; i++) {
-        out[i] = 0;
+        out[i] = HASH_MAP_SIZE;
 
         uint64_t hash = input[i];
         size_t index = static_cast<size_t>(hash & (HASH_MAP_SIZE - 1));
@@ -200,7 +203,7 @@ void invokeKernel(uint64_t *devOut, uint64_t *devInput, int input_size, uint64_t
     HANDLE_ERROR(cudaEventCreate(&stop));
 
     HANDLE_ERROR(cudaEventRecord(start, 0));
-    kernel<<<1, input_size>>>(devOut, devInput, input_size, devMap);
+    kernel<<<M, N>>>(devOut, devInput, input_size, devMap);
     HANDLE_ERROR(cudaEventRecord(stop, 0));
     HANDLE_ERROR(cudaEventSynchronize(stop));
 
@@ -256,8 +259,8 @@ void matchDatabase(const std::string& input,
 
                 HANDLE_ERROR(cudaMemcpy(out, devOut, input_size * sizeof(uint64_t), cudaMemcpyDeviceToHost));
                 for (int i = 0; i < input_size; i++) {
-                    if (out[i] != 0) {
-                        output_file << map->entries[out[i]].dbEntry << "\n";
+                    if (out[i] < HASH_MAP_SIZE) {
+                        output_file << map->getEntryAt(out[i]) << "\n";
                     }
                 }
 
@@ -278,8 +281,8 @@ void matchDatabase(const std::string& input,
 
     HANDLE_ERROR(cudaMemcpy(out, devOut, input_size * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     for (int i = 0; i < input_size; i++) {
-        if (out[i] != 0) {
-            output_file << map->entries[out[i]].dbEntry << "\n";
+        if (out[i] < HASH_MAP_SIZE) {
+            output_file << map->getEntryAt(out[i]) << "\n";
         }
     }
 

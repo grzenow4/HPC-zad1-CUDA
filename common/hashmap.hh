@@ -42,7 +42,7 @@ uint64_t hashVariant(const Variant& variant) {
 }
 
 class HashMap {
-public:
+private:
     std::vector<HashEntry> entries;
     size_t capacity;
     size_t size;
@@ -87,6 +87,14 @@ public:
         }
 
         insertAt(variant, dbEntry, index);
+    }
+
+    std::string getEntryAt(uint64_t idx) {
+        if (idx >= capacity) {
+            std::cout << "Error index " << idx << " out of range";
+            exit(EXIT_FAILURE);
+        }
+        return entries[idx].dbEntry;
     }
 
     std::string find(Variant variant) {
