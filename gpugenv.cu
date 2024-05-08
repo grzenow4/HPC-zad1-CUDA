@@ -8,8 +8,9 @@
 #include "common/errors.h"
 #include "common/hashmap.hh"
 
-#define M 1
-#define N 64
+const int DIM = 1024;
+const int N = 128;
+const int M = DIM / N;
 
 const size_t CHUNK_SIZE = 1048576;
 const size_t HASH_MAP_SIZE = 2 * CHUNK_SIZE;
@@ -169,12 +170,16 @@ void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
 }
 
 /*
- * TODO: documentation
+ * `kernel` function takes the whole `input` and a single `map`.
+ * There are N threads and M blocks. Each thread matches his part of input to
+ * the map and writes every match to the `out`. `out[i] = HASH_MAP_SIZE` means
+ * there is no match of i-th line of the `input` in the `map`.
  */
 __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t *map) {
-    int idx = threadIdx.x;
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int offset = blockDim.x * gridDim.x;
 
-    for (int i = 0; i < input_size; i++) {
+    for (int i = idx; i < input_size; i += offset) {
         out[i] = HASH_MAP_SIZE;
 
         uint64_t hash = input[i];
