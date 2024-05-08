@@ -13,7 +13,7 @@ const int N = 128;
 const int M = DIM / N;
 
 const size_t CHUNK_SIZE = 1048576;
-const size_t HASH_MAP_SIZE = 2 * CHUNK_SIZE;
+const size_t HASHMAP_SIZE = 2 * CHUNK_SIZE;
 
 /*
  * Index file contains `HashMap` info as follows:
@@ -95,7 +95,7 @@ void indexDatabase(const std::string& dbNSFP_file, const std::string& index_file
     std::getline(input_file, line); // skip the header line
 
     int chunk_count = 0;
-    HashMap *map = new HashMap(HASH_MAP_SIZE);
+    HashMap *map = new HashMap(HASHMAP_SIZE);
 
     while (std::getline(input_file, line)) {
         chunk_count++;
@@ -107,7 +107,7 @@ void indexDatabase(const std::string& dbNSFP_file, const std::string& index_file
             chunk_count = 0;
             map->writeToFile(index_file);
             delete map;
-            map = new HashMap(HASH_MAP_SIZE);
+            map = new HashMap(HASHMAP_SIZE);
         }
     }
 
@@ -172,7 +172,7 @@ void sendInputToDevice(const std::string& input, uint64_t *devInput, int size) {
 /*
  * `kernel` function takes the whole `input` and a single `map`.
  * There are N threads and M blocks. Each thread matches his part of input to
- * the map and writes every match to the `out`. `out[i] = HASH_MAP_SIZE` means
+ * the map and writes every match to the `out`. `out[i] = HASHMAP_SIZE` means
  * there is no match of i-th line of the `input` in the `map`.
  */
 __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t *map) {
@@ -180,10 +180,10 @@ __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t 
     int offset = blockDim.x * gridDim.x;
 
     for (int i = idx; i < input_size; i += offset) {
-        out[i] = HASH_MAP_SIZE;
+        out[i] = HASHMAP_SIZE;
 
         uint64_t hash = input[i];
-        size_t index = static_cast<size_t>(hash & (HASH_MAP_SIZE - 1));
+        size_t index = static_cast<size_t>(hash & (HASHMAP_SIZE - 1));
 
         while (map[index] != 0) {
             if (hash == map[index]) {
@@ -191,7 +191,7 @@ __global__ void kernel(uint64_t *out, uint64_t *input, int input_size, uint64_t 
                 break;
             }
             index++;
-            if (index == HASH_MAP_SIZE) {
+            if (index == HASHMAP_SIZE) {
                 index = 0;
             }
         }
@@ -247,7 +247,7 @@ void matchDatabase(const std::string& input,
 
     HANDLE_ERROR(cudaMalloc((void**)&devInput, input_size * sizeof(uint64_t)));
     HANDLE_ERROR(cudaMalloc((void**)&devOut, input_size * sizeof(uint64_t)));
-    HANDLE_ERROR(cudaMalloc((void**)&devMap, HASH_MAP_SIZE * sizeof(uint64_t)));
+    HANDLE_ERROR(cudaMalloc((void**)&devMap, HASHMAP_SIZE * sizeof(uint64_t)));
 
     sendInputToDevice(input, devInput, input_size);
 
@@ -258,13 +258,13 @@ void matchDatabase(const std::string& input,
         if (line == "HashMap:") {
             if (map != nullptr) {
                 uint64_t *tmp = map->dumpVariants();
-                HANDLE_ERROR(cudaMemcpy(devMap, tmp, HASH_MAP_SIZE * sizeof(uint64_t), cudaMemcpyHostToDevice));
+                HANDLE_ERROR(cudaMemcpy(devMap, tmp, HASHMAP_SIZE * sizeof(uint64_t), cudaMemcpyHostToDevice));
 
                 invokeKernel(devOut, devInput, input_size, devMap, elapsedTime);
 
                 HANDLE_ERROR(cudaMemcpy(out, devOut, input_size * sizeof(uint64_t), cudaMemcpyDeviceToHost));
                 for (int i = 0; i < input_size; i++) {
-                    if (out[i] < HASH_MAP_SIZE) {
+                    if (out[i] < HASHMAP_SIZE) {
                         output_file << map->getEntryAt(out[i]) << "\n";
                     }
                 }
@@ -272,7 +272,7 @@ void matchDatabase(const std::string& input,
                 free(tmp);
                 free(map);
             }
-            map = new HashMap(HASH_MAP_SIZE);
+            map = new HashMap(HASHMAP_SIZE);
         } else {
             size_t idx = takeIdxFromEntry(line);
             Variant variant = takeVariantFromEntry(line);
@@ -280,13 +280,13 @@ void matchDatabase(const std::string& input,
         }
     }
     uint64_t *tmp = map->dumpVariants();
-    HANDLE_ERROR(cudaMemcpy(devMap, tmp, HASH_MAP_SIZE * sizeof(uint64_t), cudaMemcpyHostToDevice));
+    HANDLE_ERROR(cudaMemcpy(devMap, tmp, HASHMAP_SIZE * sizeof(uint64_t), cudaMemcpyHostToDevice));
 
     invokeKernel(devOut, devInput, input_size, devMap, elapsedTime);
 
     HANDLE_ERROR(cudaMemcpy(out, devOut, input_size * sizeof(uint64_t), cudaMemcpyDeviceToHost));
     for (int i = 0; i < input_size; i++) {
-        if (out[i] < HASH_MAP_SIZE) {
+        if (out[i] < HASHMAP_SIZE) {
             output_file << map->getEntryAt(out[i]) << "\n";
         }
     }
